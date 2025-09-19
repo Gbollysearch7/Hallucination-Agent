@@ -23,7 +23,7 @@ Hallucinations Detector is a free and open-source tool that helps you verify the
 
 ## 🛠️ How It Works
 
-1. **Claim Extraction**: When you input your content, the tool uses an LLM (Claude 3.5 Sonnet) to break down your text into individual claims.
+1. **Claim Extraction**: When you input your content, the tool uses an LLM (Groq's GPT OSS 120B 128k) to break down your text into individual claims.
 
 2. **Source Verification**: Each claim is checked using Exa’s search tool to find reliable sources online that either support or refute it.
 
@@ -36,7 +36,7 @@ Hallucinations Detector is a free and open-source tool that helps you verify the
 ## 💻 Tech Stack
 - **Search Engine**: [Exa.ai](https://exa.ai) - Advanced web search API for AI applications
 - **Frontend**: [Next.js](https://nextjs.org/docs) with App Router, [TailwindCSS](https://tailwindcss.com), TypeScript
-- **LLM**: [Anthropic's Claude 3.5 Sonnet](https://www.anthropic.com/claude/sonnet) - but you can use any LLM (ex: gpt, gemini, llama or others)
+- **LLM**: [Groq GPT OSS 120B 128k](https://console.groq.com/docs/models) by default (configurable via env)
 - **AI Integration**: [Vercel AI SDK](https://sdk.vercel.ai/docs/ai-sdk-core)
 - **Hosting**: [Vercel](https://vercel.com/) for hosting and analytics
 
@@ -46,7 +46,7 @@ Hallucinations Detector is a free and open-source tool that helps you verify the
 
 ### Prerequisites
 - Node.js
-- API keys for Exa.ai and Anthropic
+- API keys for Exa.ai and Groq
 
 ### Installation
 
@@ -70,7 +70,15 @@ yarn install
 
 ```
 EXA_API_KEY=your_exa_api_key
-ANTHROPIC_API_KEY=your_anthropic_api_key
+GROQ_API_KEY=your_groq_api_key
+
+# Optional overrides
+# GROQ_MODEL=gpt-oss-120b-128k
+# GROQ_TEMPERATURE=0.1
+# GROQ_TOP_P=1
+# GROQ_MAX_RETRIES=2
+# EXA_MAX_RESULTS=3
+# EXA_MAX_RETRIES=2
 ```
 
 4.  Run the development server
@@ -90,7 +98,7 @@ yarn dev
 
 *   Get your Exa API key from [Exa Dashboard](https://dashboard.exa.ai/api-keys)
     
-*   Get your Anthropic API key from [Anthropic Documentation](https://docs.anthropic.com/en/api/getting-started#accessing-the-api)
+*   Get your Groq API key from [Groq Cloud](https://console.groq.com/keys)
     
 <br>
 
