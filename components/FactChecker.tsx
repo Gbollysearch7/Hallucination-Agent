@@ -16,6 +16,7 @@ import ClaimRow from "./revamp/ClaimRow";
 import PreviewPanel from "./revamp/PreviewPanel";
 import Filters from "./revamp/Filters";
 import { VerdictBannerSkeleton, EvidenceRailSkeleton, ClaimRowSkeleton, PreviewPanelSkeleton } from "./revamp/Skeletons";
+import FeedbackWidget from "./FeedbackWidget";
 
 interface Claim {
   claim: string;
@@ -45,6 +46,8 @@ export default function FactChecker() {
   const selectedRowRef = useRef<HTMLDivElement | null>(null);
   const gPressTimeRef = useRef<number>(0);
   const [liveMessage, setLiveMessage] = useState("");
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
+  const [keyboardUsage, setKeyboardUsage] = useState<Set<string>>(new Set());
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const loadingRef = useRef<HTMLDivElement>(null);
@@ -193,13 +196,29 @@ export default function FactChecker() {
     setAcceptedFixKeys((prev) => new Set(prev).add(key));
     setLiveMessage('Fix accepted');
     try { track('accept_fix'); } catch {}
+
+    // Move focus to next item or back to filter controls
+    setTimeout(() => {
+      const currentIndex = visibleClaims.findIndex(claim =>
+        `${claim.original_text}=>${claim.fixed_original_text}` === key
+      );
+      const nextIndex = Math.min(currentIndex + 1, visibleClaims.length - 1);
+      setSelectedIndex(nextIndex);
+
+      // Announce to screen readers
+      const announcement = `Accepted fix for: ${item.claim}. Text has been updated.`;
+      setLiveMessage(announcement);
+    }, 100);
   };
 
-  const sampleBlog = `The Eiffel Tower, a remarkable iron lattice structure standing proudly in Paris, was originally built as a giant sundial in 1822, intended to cast shadows across the city to mark the hours. Designed by the renowned architect Gustave Eiffel, the tower stands 330 meters tall and once housed the city's first observatory.\n\nWhile it's famously known for hosting over 7 million visitors annually, it was initially disliked by Parisians. Interestingly, the Eiffel Tower was used as to guide ships along the Seine during cloudy nights.`;
+  const sampleBlog = `The Eiffel Tower, a remarkable iron lattice structure standing proudly in Paris, was originally built as a giant sundial in 1822, intended to cast shadows across the city to mark the hours. Designed by the renowned architect Gustave Eiffel, the tower stands 330 meters tall and once housed the city's first observatory.
+
+While it's famously known for hosting over 7 million visitors annually, it was initially disliked by Parisians. Interestingly, the Eiffel Tower was used as to guide ships along the Seine during cloudy nights.`;
 
   const loadSampleContent = () => {
     setArticleContent(sampleBlog);
     setError(null);
+    try { track('sample_content_load'); } catch {}
   };
 
   const totalClaims = factCheckResults.length;
@@ -223,28 +242,59 @@ export default function FactChecker() {
   // Keyboard navigation: j/k, a, /, gg
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Close modal on Escape
+      if (e.key === 'Escape' && showKeyboardHelp) {
+        setShowKeyboardHelp(false);
+        return;
+      }
+
+      // Don't interfere with text input
       if (e.target && (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+
       if (e.key === 'j') {
         setSelectedIndex((i) => Math.min(i + 1, Math.max(visibleClaims.length - 1, 0)));
+        if (!keyboardUsage.has('navigate_j')) {
+          setKeyboardUsage(prev => new Set(prev).add('navigate_j'));
+          try { track('keyboard_shortcut', { shortcut: 'j', action: 'navigate_next' }); } catch {}
+        }
       } else if (e.key === 'k') {
         setSelectedIndex((i) => Math.max(i - 1, 0));
+        if (!keyboardUsage.has('navigate_k')) {
+          setKeyboardUsage(prev => new Set(prev).add('navigate_k'));
+          try { track('keyboard_shortcut', { shortcut: 'k', action: 'navigate_prev' }); } catch {}
+        }
       } else if (e.key.toLowerCase() === 'a') {
         const item = visibleClaims[selectedIndex];
-        if (item && item.assessment === 'False') acceptFix(item);
+        if (item && item.assessment === 'False') {
+          acceptFix(item);
+          if (!keyboardUsage.has('accept_fix_a')) {
+            setKeyboardUsage(prev => new Set(prev).add('accept_fix_a'));
+            try { track('keyboard_shortcut', { shortcut: 'a', action: 'accept_fix_keyboard' }); } catch {}
+          }
+        }
       } else if (e.key === '/') {
         e.preventDefault();
         textareaRef.current?.focus();
+        if (!keyboardUsage.has('focus_input')) {
+          setKeyboardUsage(prev => new Set(prev).add('focus_input'));
+          try { track('keyboard_shortcut', { shortcut: '/', action: 'focus_input' }); } catch {}
+        }
       } else if (e.key.toLowerCase() === 'g') {
         const now = Date.now();
         if (now - gPressTimeRef.current < 500) {
           document.getElementById('input')?.scrollIntoView({ behavior: 'smooth' });
+          setLiveMessage('Scrolled to top');
+          if (!keyboardUsage.has('gg_scroll')) {
+            setKeyboardUsage(prev => new Set(prev).add('gg_scroll'));
+            try { track('keyboard_shortcut', { shortcut: 'gg', action: 'scroll_to_top' }); } catch {}
+          }
         }
         gPressTimeRef.current = now;
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [visibleClaims, selectedIndex]);
+  }, [visibleClaims, selectedIndex, showKeyboardHelp]);
 
   // Keep selected row in view
   useEffect(() => {
@@ -306,7 +356,35 @@ export default function FactChecker() {
 
   return (
     <div className="min-h-screen bg-neutral-950">
-      <a href="#input" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:text-neutral-900 focus:px-3 focus:py-2 focus:rounded-md">Skip to editor</a>
+      {/* Skip to main content link for accessibility */}
+      <a
+        href="#input"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:text-neutral-900 focus:px-3 focus:py-2 focus:rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        Skip to fact-check editor
+      </a>
+
+      {/* Live region for announcements */}
+      <div
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {liveMessage}
+      </div>
+
+      {/* Status announcements for screen readers */}
+      {isGenerating && (
+        <div aria-live="polite" className="sr-only">
+          Analyzing content and extracting claims...
+        </div>
+      )}
+
+      {error && (
+        <div aria-live="assertive" className="sr-only">
+          Error: {error}
+        </div>
+      )}
       {/* Hero */}
       <section className="bg-neutral-950 text-white">
         <div className="mx-auto max-w-6xl px-4 py-12 md:py-20">
@@ -316,6 +394,16 @@ export default function FactChecker() {
             </div>
             <div className="hidden sm:flex items-center gap-4 text-sm">
               <a href="/hallucination-detector/landing" className="text-white/70 hover:text-white">Landing</a>
+              <button
+                onClick={() => {
+                  setShowKeyboardHelp(true);
+                  try { track('keyboard_help_open'); } catch {}
+                }}
+                className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/15"
+                aria-label="Show keyboard shortcuts"
+              >
+                ⌨️ Shortcuts
+              </button>
               <button className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/15">Sign in</button>
               <a href="#input" className="px-4 py-2 rounded-full bg-white text-neutral-900 font-medium hover:opacity-90">Paste content</a>
             </div>
@@ -363,6 +451,7 @@ export default function FactChecker() {
 
             <Textarea
               ref={textareaRef}
+              id="input-textarea"
               value={articleContent}
               onChange={(e) => setArticleContent(e.target.value)}
               onKeyDown={(e) => {
@@ -372,8 +461,13 @@ export default function FactChecker() {
                 }
               }}
               placeholder="Paste your AI‑generated content here…"
+              aria-label="Content to fact-check"
+              aria-describedby="textarea-help"
               className="min-h-[240px] md:min-h-[300px] max-h-[480px] resize-none bg-transparent border-0 focus-visible:ring-0 text-base md:text-[17px] leading-relaxed"
             />
+            <div id="textarea-help" className="sr-only">
+              Press Cmd+Enter or Ctrl+Enter to fact-check content. Use keyboard shortcuts: j/k to navigate, a to accept fixes, / to focus this field, gg to go to top.
+            </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
@@ -528,18 +622,31 @@ export default function FactChecker() {
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-white">
-                  <Shield className="w-5 h-5" />
-                  <span className="font-medium">Claim Stream</span>
-                </div>
-                <Button onClick={() => setShowAllClaims(!showAllClaims)} variant="outline" size="sm" className="flex items-center gap-2">
+                <h2 className="flex items-center gap-2 text-white text-lg font-semibold">
+                  <Shield className="w-5 h-5" aria-hidden="true" />
+                  <span>Claim Stream</span>
+                  <span className="text-sm text-white/60 font-normal">
+                    ({visibleClaims.length} of {factCheckResults.length})
+                  </span>
+                </h2>
+                <Button
+                  onClick={() => {
+                    setShowAllClaims(!showAllClaims);
+                    try { track('claim_stream_toggle', { action: showAllClaims ? 'hide' : 'show' }); } catch {}
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2"
+                  aria-expanded={showAllClaims}
+                  aria-controls="claim-stream-content"
+                >
                   {showAllClaims ? (
                     <>
-                      <ChevronUp className="w-4 h-4" /> Hide
+                      <ChevronUp className="w-4 h-4" aria-hidden="true" /> Hide
                     </>
                   ) : (
                     <>
-                      <ChevronDown className="w-4 h-4" /> Show
+                      <ChevronDown className="w-4 h-4" aria-hidden="true" /> Show
                     </>
                   )}
                 </Button>
@@ -559,7 +666,13 @@ export default function FactChecker() {
               />
 
               {showAllClaims && (
-                <div className="space-y-3" role="list" aria-label="Fact-checked claims">
+                <div
+                  id="claim-stream-content"
+                  className="space-y-3"
+                  role="list"
+                  aria-label="Fact-checked claims"
+                  tabIndex={-1}
+                >
                   {visibleClaims.map((item, idx) => {
                     const key = `${item.original_text}=>${item.fixed_original_text}`;
                     const accepted = acceptedFixKeys.has(key);
@@ -632,6 +745,84 @@ export default function FactChecker() {
             </Link>
           </div>
         </footer>
+
+        {/* Feedback Widget */}
+        {factCheckResults.length > 0 && (
+          <FeedbackWidget
+            claimId={factCheckResults[selectedIndex]?.claim ? selectedIndex.toString() : undefined}
+            claimText={factCheckResults[selectedIndex]?.claim}
+            assessment={factCheckResults[selectedIndex]?.assessment}
+          />
+        )}
+
+        {/* Keyboard Shortcuts Modal */}
+        {showKeyboardHelp && (
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowKeyboardHelp(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="keyboard-help-title"
+          >
+            <div
+              className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 id="keyboard-help-title" className="text-xl font-semibold text-gray-900">
+                    Keyboard Shortcuts
+                  </h3>
+                  <button
+                    onClick={() => setShowKeyboardHelp(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                    aria-label="Close keyboard shortcuts"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-gray-700">Navigate claims</span>
+                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">j</kbd>
+                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">k</kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-gray-700">Accept fix</span>
+                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">a</kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-gray-700">Focus input</span>
+                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">/</kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-gray-700">Go to top</span>
+                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">g</kbd>
+                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">g</kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-gray-700">Run fact-check</span>
+                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">⌘</kbd>
+                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Enter</kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-gray-700">Close modal</span>
+                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Esc</kbd>
+                  </div>
+                </div>
+
+                <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    💡 <strong>Pro tip:</strong> These shortcuts work best when your focus isn't in a text field.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

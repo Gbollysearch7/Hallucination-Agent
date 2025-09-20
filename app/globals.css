@@ -177,4 +177,24 @@ h1, h2, h3, h4, h5, h6 {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* Disable smooth scrolling */
+  html {
+    scroll-behavior: auto !important;
+  }
+
+  /* Remove transform-based animations */
+  .hover\:scale-105:hover,
+  .hover\:scale-100:hover,
+  .transform,
+  .transition-transform {
+    transform: none !important;
+  }
+
+  /* Disable opacity transitions */
+  .transition-opacity,
+  .hover\:opacity-80:hover,
+  .hover\:opacity-90:hover {
+    transition: none !important;
+  }
 }
